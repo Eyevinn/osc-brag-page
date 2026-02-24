@@ -472,8 +472,8 @@
       <span class="dot"></span>
       Live metrics from 15 repositories
     </div>
-    <h1>
-      <span class="gradient">92% AI-Authored.</span><br />
+    <h1 id="hero-headline">
+      <span class="gradient"><span id="headline-pct">88</span>% AI-Authored.</span><br />
       Zero Compromises.
     </h1>
     <p class="subtitle">
@@ -545,7 +545,7 @@
     </p>
     <div class="compare-grid" id="compare-grid">
       <div class="compare-card ours">
-        <div class="compare-val">92%</div>
+        <div class="compare-val" id="compare-ai-pct">88%</div>
         <div class="compare-label">OSC AI-authored code</div>
       </div>
       <div class="compare-card industry">
@@ -618,8 +618,12 @@
     }
 
     function render(data) {
-      // Hero stats
+      // Hero headline (dynamic percentage)
       const h = data.headline;
+      document.getElementById('headline-pct').textContent = h.aiAutonomyPercent;
+      document.getElementById('compare-ai-pct').textContent = h.aiAutonomyPercent + '%';
+
+      // Hero stats
       const aiCommits = data.teams.aiDevTeam.commits90d + data.teams.aiAgentDirect.commits90d;
       document.getElementById('hero-stats').innerHTML = `
         <div class="big-stat primary"><div class="number">${h.aiAutonomyPercent}%</div><div class="label">AI-authored commits</div></div>
