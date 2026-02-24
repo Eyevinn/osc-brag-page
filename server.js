@@ -1,9 +1,18 @@
 const Fastify = require("fastify");
 const path = require("path");
 const fs = require("fs");
+const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
+const {
+  StreamableHTTPServerTransport,
+} = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
+const { z } = require("zod");
 
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, "data", "metrics.json");
+
+// ---------------------------------------------------------------------------
+// Metrics persistence
+// ---------------------------------------------------------------------------
 
 function loadMetrics() {
   try {
@@ -16,6 +25,25 @@ function loadMetrics() {
 function saveMetrics(metrics) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(metrics, null, 2));
+}
+
+function deepMerge(target, source) {
+  const output = { ...target };
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] &&
+      typeof source[key] === "object" &&
+      !Array.isArray(source[key]) &&
+      target[key] &&
+      typeof target[key] === "object" &&
+      !Array.isArray(target[key])
+    ) {
+      output[key] = deepMerge(target[key], source[key]);
+    } else {
+      output[key] = source[key];
+    }
+  }
+  return output;
 }
 
 function getDefaultMetrics() {
@@ -126,6 +154,225 @@ function getDefaultMetrics() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// MCP Server setup
+// ---------------------------------------------------------------------------
+
+function createMcpServer() {
+  const mcp = new McpServer({
+    name: "osc-brag-page",
+    version: "1.0.0",
+  });
+
+  // Tool: get metrics
+  mcp.tool(
+    "get-metrics",
+    "Get all current metrics from the OSC AI Autonomy Brag Page",
+    {},
+    async () => {
+      const metrics = loadMetrics();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(metrics, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool: update headline stats
+  mcp.tool(
+    "update-headline",
+    "Update the headline stats shown at the top of the brag page",
+    {
+      aiAutonomyPercent: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("AI autonomy percentage"),
+      totalCommits90d: z
+        .number()
+        .optional()
+        .describe("Total commits in last 90 days"),
+      totalRepos: z.number().optional().describe("Total repositories"),
+      totalPRs90d: z
+        .number()
+        .optional()
+        .describe("Total PRs in last 90 days"),
+    },
+    async (args) => {
+      const current = loadMetrics();
+      const update = {};
+      if (args.aiAutonomyPercent !== undefined)
+        update.aiAutonomyPercent = args.aiAutonomyPercent;
+      if (args.totalCommits90d !== undefined)
+        update.totalCommits90d = args.totalCommits90d;
+      if (args.totalRepos !== undefined) update.totalRepos = args.totalRepos;
+      if (args.totalPRs90d !== undefined)
+        update.totalPRs90d = args.totalPRs90d;
+
+      current.headline = { ...current.headline, ...update };
+      current.lastUpdated = new Date().toISOString().split("T")[0];
+      saveMetrics(current);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Headline updated: ${JSON.stringify(current.headline)}`,
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool: update team stats
+  mcp.tool(
+    "update-team",
+    "Update commit/PR stats for a specific team on the brag page",
+    {
+      team: z
+        .enum(["aiDevTeam", "aiAgentDirect", "pmTeam", "humanContributors"])
+        .describe("Team identifier"),
+      commits90d: z.number().optional().describe("Commits in last 90 days"),
+      commitsAllTime: z.number().optional().describe("All-time commit count"),
+      prs90d: z.number().optional().describe("PRs in last 90 days"),
+    },
+    async (args) => {
+      const current = loadMetrics();
+      const team = current.teams[args.team];
+      if (!team) {
+        return {
+          content: [{ type: "text", text: `Unknown team: ${args.team}` }],
+          isError: true,
+        };
+      }
+      if (args.commits90d !== undefined) team.commits90d = args.commits90d;
+      if (args.commitsAllTime !== undefined)
+        team.commitsAllTime = args.commitsAllTime;
+      if (args.prs90d !== undefined) team.prs90d = args.prs90d;
+      current.lastUpdated = new Date().toISOString().split("T")[0];
+      saveMetrics(current);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Team "${team.label}" updated: ${team.commits90d} commits, ${team.prs90d} PRs (90d), ${team.commitsAllTime} all-time`,
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool: update repo stats
+  mcp.tool(
+    "update-repo",
+    "Update the AI vs human commit counts for a repository",
+    {
+      name: z.string().describe("Repository name (e.g. osaas-app)"),
+      desc: z.string().optional().describe("Repository description"),
+      ai: z.number().optional().describe("AI-authored commits (90d)"),
+      human: z.number().optional().describe("Human commits (90d)"),
+    },
+    async (args) => {
+      const current = loadMetrics();
+      const idx = current.repos.findIndex((r) => r.name === args.name);
+      if (idx >= 0) {
+        if (args.ai !== undefined) current.repos[idx].ai = args.ai;
+        if (args.human !== undefined) current.repos[idx].human = args.human;
+        if (args.desc !== undefined) current.repos[idx].desc = args.desc;
+      } else {
+        current.repos.push({
+          name: args.name,
+          desc: args.desc || "",
+          ai: args.ai || 0,
+          human: args.human || 0,
+        });
+      }
+      current.lastUpdated = new Date().toISOString().split("T")[0];
+      saveMetrics(current);
+      const repo = current.repos.find((r) => r.name === args.name);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Repo "${args.name}" updated: ${repo.ai} AI / ${repo.human} human commits`,
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool: add milestone
+  mcp.tool(
+    "add-milestone",
+    "Add a new milestone to the brag page timeline",
+    {
+      date: z
+        .string()
+        .describe('Milestone date (e.g. "2026-03" or "2026-03-15")'),
+      event: z.string().describe("Description of the milestone"),
+    },
+    async (args) => {
+      const current = loadMetrics();
+      current.milestones.push({ date: args.date, event: args.event });
+      current.lastUpdated = new Date().toISOString().split("T")[0];
+      saveMetrics(current);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Milestone added (${current.milestones.length} total): ${args.date} - ${args.event}`,
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool: bulk update all metrics
+  mcp.tool(
+    "bulk-update",
+    "Replace all metrics at once with a full metrics JSON object. Use get-metrics first to see the current structure.",
+    {
+      metrics: z
+        .string()
+        .describe(
+          "Full metrics JSON string (must match the metrics schema from get-metrics)"
+        ),
+    },
+    async (args) => {
+      try {
+        const newMetrics = JSON.parse(args.metrics);
+        newMetrics.lastUpdated = new Date().toISOString().split("T")[0];
+        saveMetrics(newMetrics);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `All metrics replaced. ${newMetrics.repos?.length || 0} repos, ${newMetrics.milestones?.length || 0} milestones. Updated: ${newMetrics.lastUpdated}`,
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            { type: "text", text: `Invalid JSON: ${err.message}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  return mcp;
+}
+
+// ---------------------------------------------------------------------------
+// Fastify app
+// ---------------------------------------------------------------------------
+
 async function build() {
   const app = Fastify({ logger: true });
 
@@ -135,27 +382,23 @@ async function build() {
     prefix: "/",
   });
 
-  // Initialize data file if missing
+  // Initialize data
   if (!fs.existsSync(DATA_FILE)) {
     saveMetrics(getDefaultMetrics());
   }
 
-  // API: Get metrics
-  app.get("/api/metrics", async () => {
-    return loadMetrics();
-  });
+  // ---- REST API ----
 
-  // API: Update metrics (MCP-compatible)
+  app.get("/api/metrics", async () => loadMetrics());
+
   app.put("/api/metrics", async (request) => {
     const current = loadMetrics();
-    const updates = request.body;
-    const merged = deepMerge(current, updates);
+    const merged = deepMerge(current, request.body);
     merged.lastUpdated = new Date().toISOString().split("T")[0];
     saveMetrics(merged);
     return { ok: true, lastUpdated: merged.lastUpdated };
   });
 
-  // API: Update a specific section
   app.patch("/api/metrics/:section", async (request) => {
     const { section } = request.params;
     const current = loadMetrics();
@@ -171,7 +414,6 @@ async function build() {
     return { ok: true, section, lastUpdated: current.lastUpdated };
   });
 
-  // API: Add a milestone
   app.post("/api/metrics/milestones", async (request) => {
     const current = loadMetrics();
     current.milestones.push(request.body);
@@ -180,32 +422,83 @@ async function build() {
     return { ok: true, milestones: current.milestones.length };
   });
 
-  // Health check
   app.get("/api/health", async () => ({ status: "ok" }));
+
+  // ---- MCP Streamable HTTP endpoint ----
+
+  // Session map: sessionId -> transport
+  const sessions = new Map();
+
+  // Disable Fastify body parsing on /mcp so we can pass raw body to transport
+  app.removeAllContentTypeParsers();
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    try {
+      done(null, JSON.parse(body));
+    } catch (err) {
+      done(err);
+    }
+  });
+
+  async function handleMcpRequest(request, reply) {
+    const sessionId = request.headers["mcp-session-id"];
+
+    // Route to existing session
+    if (sessionId && sessions.has(sessionId)) {
+      const transport = sessions.get(sessionId);
+      await transport.handleRequest(request.raw, reply.raw, request.body);
+      return reply.hijack();
+    }
+
+    // New session (initialize request)
+    const mcp = createMcpServer();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+    });
+
+    transport.onclose = () => {
+      if (transport.sessionId) sessions.delete(transport.sessionId);
+    };
+
+    await mcp.connect(transport);
+    await transport.handleRequest(request.raw, reply.raw, request.body);
+
+    // After handling, the transport now has a session ID
+    if (transport.sessionId) {
+      sessions.set(transport.sessionId, transport);
+    }
+
+    return reply.hijack();
+  }
+
+  app.post("/mcp", handleMcpRequest);
+
+  app.get("/mcp", async (request, reply) => {
+    const sessionId = request.headers["mcp-session-id"];
+    if (!sessionId || !sessions.has(sessionId)) {
+      return reply.code(400).send({ error: "Invalid or missing session ID" });
+    }
+    const transport = sessions.get(sessionId);
+    await transport.handleRequest(request.raw, reply.raw);
+    return reply.hijack();
+  });
+
+  app.delete("/mcp", async (request, reply) => {
+    const sessionId = request.headers["mcp-session-id"];
+    if (sessionId && sessions.has(sessionId)) {
+      const transport = sessions.get(sessionId);
+      await transport.close();
+      sessions.delete(sessionId);
+    }
+    reply.raw.writeHead(200);
+    reply.raw.end();
+    return reply.hijack();
+  });
 
   await app.listen({ port: parseInt(PORT), host: "0.0.0.0" });
   return app;
 }
 
-function deepMerge(target, source) {
-  const output = { ...target };
-  for (const key of Object.keys(source)) {
-    if (
-      source[key] &&
-      typeof source[key] === "object" &&
-      !Array.isArray(source[key]) &&
-      target[key] &&
-      typeof target[key] === "object" &&
-      !Array.isArray(target[key])
-    ) {
-      output[key] = deepMerge(target[key], source[key]);
-    } else {
-      output[key] = source[key];
-    }
-  }
-  return output;
-}
-
+const crypto = require("crypto");
 build().catch((err) => {
   console.error(err);
   process.exit(1);
