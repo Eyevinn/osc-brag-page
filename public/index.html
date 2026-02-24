@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Built by AI Agents | Eyevinn Open Source Cloud</title>
+  <meta name="description" content="How AI agent teams autonomously build, deploy, and operate a cloud platform with 15+ microservices across 3 Kubernetes clusters." />
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface-2: #1a1a28;
+      --border: #2a2a3a;
+      --text: #e8e8f0;
+      --text-dim: #8888a0;
+      --accent: #6c5ce7;
+      --accent-glow: #a29bfe;
+      --green: #00e676;
+      --green-dim: #00c853;
+      --orange: #ff9100;
+      --blue: #448aff;
+      --pink: #ff4081;
+      --cyan: #00e5ff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { color: var(--accent-glow); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Hero */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(108,92,231,0.15), transparent),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(0,230,118,0.08), transparent);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.85rem;
+      color: var(--green);
+      background: rgba(0,230,118,0.06);
+      margin-bottom: 2rem;
+      animation: fadeIn 1s ease;
+    }
+    .hero-badge .dot {
+      width: 8px; height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+      animation: fadeIn 1s ease 0.2s both;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent-glow), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero .subtitle {
+      font-size: clamp(1rem, 2vw, 1.35rem);
+      color: var(--text-dim);
+      max-width: 700px;
+      margin-bottom: 3rem;
+      animation: fadeIn 1s ease 0.4s both;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Big numbers */
+    .big-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1.5rem;
+      max-width: 900px;
+      width: 100%;
+      animation: fadeIn 1s ease 0.6s both;
+    }
+    .big-stat {
+      text-align: center;
+      padding: 1.5rem;
+      border-radius: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .big-stat .number {
+      font-size: 3rem;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+    .big-stat .label {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .big-stat.primary .number { color: var(--green); }
+    .big-stat.secondary .number { color: var(--accent-glow); }
+    .big-stat.tertiary .number { color: var(--cyan); }
+    .big-stat.quaternary .number { color: var(--orange); }
+
+    /* Sections */
+    section {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+    .section-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--accent-glow);
+      margin-bottom: 0.75rem;
+    }
+    .section-title {
+      font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+      font-weight: 700;
+      margin-bottom: 1rem;
+      letter-spacing: -0.02em;
+    }
+    .section-subtitle {
+      font-size: 1.1rem;
+      color: var(--text-dim);
+      max-width: 650px;
+      margin-bottom: 3rem;
+    }
+
+    /* Team cards */
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+    .team-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      transition: border-color 0.3s, transform 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .team-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-4px);
+    }
+    .team-card.highlight {
+      border-color: var(--green);
+      background: linear-gradient(135deg, rgba(0,230,118,0.04), var(--surface));
+    }
+    .team-card .icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .team-card.highlight .icon { background: rgba(0,230,118,0.12); }
+    .team-card:not(.highlight) .icon { background: rgba(108,92,231,0.12); }
+    .team-card h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .team-card .desc {
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      margin-bottom: 1.25rem;
+    }
+    .team-stats {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .team-stats .stat-item .val {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+    .team-stats .stat-item .lbl {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+    .team-card.highlight .stat-item .val { color: var(--green); }
+    .team-card:not(.highlight) .stat-item .val { color: var(--accent-glow); }
+    .members-list {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .members-list span {
+      display: inline-block;
+      font-size: 0.78rem;
+      padding: 0.2rem 0.6rem;
+      margin: 0.2rem;
+      border-radius: 6px;
+      background: var(--surface-2);
+      color: var(--text-dim);
+    }
+
+    /* Repo bar chart */
+    .repo-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .repo-row {
+      display: grid;
+      grid-template-columns: 200px 1fr 60px;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 600px) {
+      .repo-row { grid-template-columns: 1fr; }
+    }
+    .repo-name {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .repo-name small {
+      display: block;
+      font-weight: 400;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    .bar-container {
+      height: 28px;
+      background: var(--surface);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+    }
+    .bar-ai {
+      background: linear-gradient(90deg, var(--accent), var(--accent-glow));
+      height: 100%;
+      transition: width 1s ease;
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: white;
+      min-width: fit-content;
+    }
+    .bar-human {
+      background: rgba(255,255,255,0.08);
+      height: 100%;
+      transition: width 1s ease;
+    }
+    .repo-total {
+      text-align: right;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+
+    /* Automation */
+    .auto-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+    .auto-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .auto-card .freq {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+    .auto-card h4 {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .auto-card p {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    /* Timeline */
+    .timeline {
+      position: relative;
+      padding-left: 2rem;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 7px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+    .timeline-item {
+      position: relative;
+      padding-bottom: 2rem;
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -2rem;
+      top: 6px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 3px solid var(--bg);
+    }
+    .timeline-item:last-child::before {
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(0,230,118,0.4);
+    }
+    .timeline-date {
+      font-size: 0.8rem;
+      color: var(--accent-glow);
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .timeline-event {
+      font-size: 1rem;
+    }
+
+    /* Context banner */
+    .context-banner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 3rem 2rem;
+    }
+    .context-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+    @media (max-width: 700px) {
+      .context-box { grid-template-columns: 1fr; }
+    }
+    .context-box h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+    .context-box p {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+    }
+    .context-box .highlight-text {
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    /* Stack */
+    .stack-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .stack-pills span {
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text-dim);
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    footer .updated {
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+      opacity: 0.6;
+    }
+
+    /* Industry comparison */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.25rem;
+      margin-top: 2rem;
+    }
+    .compare-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .compare-card .compare-val {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 0.25rem;
+    }
+    .compare-card .compare-label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .compare-card.ours .compare-val { color: var(--green); }
+    .compare-card.industry .compare-val { color: var(--text-dim); }
+    .compare-card .compare-source {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      opacity: 0.5;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Live metrics from 15 repositories
+    </div>
+    <h1>
+      <span class="gradient">92% AI-Authored.</span><br />
+      Zero Compromises.
+    </h1>
+    <p class="subtitle">
+      Eyevinn Open Source Cloud is built, deployed, and operated by autonomous AI agent teams. Real commits. Real production. Real infrastructure.
+    </p>
+    <div class="big-stats" id="hero-stats">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+
+  <!-- Context -->
+  <div class="context-banner">
+    <div class="context-box">
+      <div>
+        <h3>What is this?</h3>
+        <p>
+          Open Source Cloud (OSC) is a production platform that takes open source software and provides it as managed services. The entire platform &mdash; <span class="highlight-text">15 microservices, 3 Kubernetes clusters, a Next.js web app, CI/CD pipelines, and 24/7 monitoring</span> &mdash; is developed and operated by AI agent teams with minimal human intervention.
+        </p>
+      </div>
+      <div>
+        <h3>How it works</h3>
+        <p>
+          A human team lead orchestrates specialized Claude Code agents (architect, backend, frontend, UX, tester, writer) that autonomously write code, create PRs, run tests, deploy to production, and monitor health. A separate PM/business team drives product strategy through issues and reviews.
+        </p>
+        <div class="stack-pills">
+          <span>TypeScript</span>
+          <span>Fastify</span>
+          <span>Next.js</span>
+          <span>Kubernetes</span>
+          <span>Claude Code</span>
+          <span>GitHub Actions</span>
+          <span>Prometheus</span>
+          <span>MongoDB</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Teams -->
+  <section>
+    <div class="section-label">The Teams</div>
+    <h2 class="section-title">Who builds Open Source Cloud</h2>
+    <p class="section-subtitle">
+      Two AI teams and their human collaborators. The AI Dev Team handles the full SDLC; autonomous bots handle routine operations.
+    </p>
+    <div class="team-grid" id="team-grid">
+      <!-- Filled by JS -->
+    </div>
+  </section>
+
+  <!-- Repos -->
+  <section>
+    <div class="section-label">Repository Breakdown</div>
+    <h2 class="section-title">AI vs Human commits by repo</h2>
+    <p class="section-subtitle">
+      Every bar shows real git log data from the last 90 days. Purple = AI-authored commits. Gray = human commits.
+    </p>
+    <div class="repo-list" id="repo-list">
+      <!-- Filled by JS -->
+    </div>
+  </section>
+
+  <!-- Industry Comparison -->
+  <section>
+    <div class="section-label">Industry Context</div>
+    <h2 class="section-title">How this compares</h2>
+    <p class="section-subtitle">
+      Industry averages from DORA, Jellyfish, and Bain research vs. OSC's actual numbers.
+    </p>
+    <div class="compare-grid" id="compare-grid">
+      <div class="compare-card ours">
+        <div class="compare-val">92%</div>
+        <div class="compare-label">OSC AI-authored code</div>
+      </div>
+      <div class="compare-card industry">
+        <div class="compare-val">42%</div>
+        <div class="compare-label">Industry avg AI-assisted code (2025)</div>
+        <div class="compare-source">Jellyfish / Bain 2025</div>
+      </div>
+      <div class="compare-card ours">
+        <div class="compare-val">6</div>
+        <div class="compare-label">Specialized AI agents in team</div>
+      </div>
+      <div class="compare-card industry">
+        <div class="compare-val">1</div>
+        <div class="compare-label">Typical AI tools (Copilot alone)</div>
+        <div class="compare-source">DORA 2025</div>
+      </div>
+      <div class="compare-card ours">
+        <div class="compare-val">24/7</div>
+        <div class="compare-label">Automated ops coverage</div>
+      </div>
+      <div class="compare-card industry">
+        <div class="compare-val">~14%</div>
+        <div class="compare-label">Teams using code review agents</div>
+        <div class="compare-source">Jellyfish Jan 2025</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Automation -->
+  <section>
+    <div class="section-label">Automation</div>
+    <h2 class="section-title">Runs without humans</h2>
+    <p class="section-subtitle">
+      Scheduled pipelines that operate autonomously every day &mdash; deploying code, merging dependencies, fixing issues, and monitoring health.
+    </p>
+    <div class="auto-grid" id="auto-grid">
+      <!-- Filled by JS -->
+    </div>
+  </section>
+
+  <!-- Timeline -->
+  <section>
+    <div class="section-label">Timeline</div>
+    <h2 class="section-title">Milestones</h2>
+    <div class="timeline" id="timeline">
+      <!-- Filled by JS -->
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      <a href="https://www.osaas.io" target="_blank">Eyevinn Open Source Cloud</a> &mdash; open source as a service
+    </p>
+    <p>This page was built and deployed by an AI agent. Data updated via MCP API.</p>
+    <p class="updated" id="last-updated"></p>
+  </footer>
+
+  <script>
+    const ICONS = {
+      robot: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="11"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`,
+      bot: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="2" y="8" width="20" height="12" rx="2"/><path d="M6 16h.01"/><path d="M18 16h.01"/><path d="M10 16h4"/></svg>`,
+      user: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+      users: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    };
+
+    async function loadData() {
+      const res = await fetch('/api/metrics');
+      const data = await res.json();
+      render(data);
+    }
+
+    function render(data) {
+      // Hero stats
+      const h = data.headline;
+      const aiCommits = data.teams.aiDevTeam.commits90d + data.teams.aiAgentDirect.commits90d;
+      document.getElementById('hero-stats').innerHTML = `
+        <div class="big-stat primary"><div class="number">${h.aiAutonomyPercent}%</div><div class="label">AI-authored commits</div></div>
+        <div class="big-stat secondary"><div class="number">${h.totalCommits90d.toLocaleString()}</div><div class="label">Commits (90 days)</div></div>
+        <div class="big-stat tertiary"><div class="number">${h.totalPRs90d.toLocaleString()}</div><div class="label">Pull requests</div></div>
+        <div class="big-stat quaternary"><div class="number">${h.totalRepos}</div><div class="label">Repositories</div></div>
+      `;
+
+      // Teams
+      const teamOrder = ['aiDevTeam', 'aiAgentDirect', 'pmTeam', 'humanContributors'];
+      const isHighlight = { aiDevTeam: true, aiAgentDirect: true };
+      document.getElementById('team-grid').innerHTML = teamOrder.map(key => {
+        const t = data.teams[key];
+        const hl = isHighlight[key] ? 'highlight' : '';
+        let membersHtml = '';
+        if (t.members) {
+          membersHtml = `<div class="members-list">${t.members.map(m => `<span>${m}</span>`).join('')}</div>`;
+        }
+        return `
+          <div class="team-card ${hl}">
+            <div class="icon">${ICONS[t.avatar] || ICONS.user}</div>
+            <h3>${t.label}</h3>
+            <p class="desc">${t.description}</p>
+            <div class="team-stats">
+              <div class="stat-item"><div class="val">${t.commits90d.toLocaleString()}</div><div class="lbl">Commits (90d)</div></div>
+              <div class="stat-item"><div class="val">${t.prs90d.toLocaleString()}</div><div class="lbl">PRs (90d)</div></div>
+              ${t.commitsAllTime ? `<div class="stat-item"><div class="val">${t.commitsAllTime.toLocaleString()}</div><div class="lbl">All-time</div></div>` : ''}
+            </div>
+            ${membersHtml}
+          </div>
+        `;
+      }).join('');
+
+      // Repos
+      const repos = data.repos || [];
+      const maxTotal = Math.max(...repos.map(r => r.ai + r.human));
+      document.getElementById('repo-list').innerHTML = repos.map(r => {
+        const total = r.ai + r.human;
+        const aiPct = total > 0 ? (r.ai / maxTotal) * 100 : 0;
+        const humanPct = total > 0 ? (r.human / maxTotal) * 100 : 0;
+        const aiPercent = total > 0 ? Math.round((r.ai / total) * 100) : 0;
+        return `
+          <div class="repo-row">
+            <div class="repo-name">${r.name}<small>${r.desc}</small></div>
+            <div class="bar-container">
+              <div class="bar-ai" style="width:${aiPct}%">${aiPercent}%</div>
+              <div class="bar-human" style="width:${humanPct}%"></div>
+            </div>
+            <div class="repo-total">${total}</div>
+          </div>
+        `;
+      }).join('');
+
+      // Automation
+      const autoKeys = Object.keys(data.automation || {});
+      document.getElementById('auto-grid').innerHTML = autoKeys.map(key => {
+        const a = data.automation[key];
+        return `
+          <div class="auto-card">
+            <div class="freq">${a.frequency}</div>
+            <h4>${a.label}</h4>
+            <p>${a.desc}</p>
+          </div>
+        `;
+      }).join('');
+
+      // Timeline
+      document.getElementById('timeline').innerHTML = (data.milestones || []).map(m => `
+        <div class="timeline-item">
+          <div class="timeline-date">${m.date}</div>
+          <div class="timeline-event">${m.event}</div>
+        </div>
+      `).join('');
+
+      // Footer
+      document.getElementById('last-updated').textContent = `Data last updated: ${data.lastUpdated}`;
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
