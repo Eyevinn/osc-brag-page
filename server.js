@@ -1,6 +1,7 @@
 const Fastify = require("fastify");
 const path = require("path");
 const fs = require("fs");
+const Redis = require("ioredis");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const {
   StreamableHTTPServerTransport,
@@ -8,23 +9,62 @@ const {
 const { z } = require("zod");
 
 const PORT = process.env.PORT || 8080;
-const DATA_FILE = path.join(__dirname, "data", "metrics.json");
+const VALKEY_URL = process.env.VALKEY_URL;
+const METRICS_KEY = "brag:metrics";
 
 // ---------------------------------------------------------------------------
-// Metrics persistence
+// Metrics persistence (Valkey-backed with in-memory cache)
 // ---------------------------------------------------------------------------
 
-function loadMetrics() {
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
-  } catch {
-    return getDefaultMetrics();
+let redis = null;
+let metricsCache = null;
+
+function initRedis() {
+  if (!VALKEY_URL) {
+    console.log("No VALKEY_URL set - using in-memory storage only (data lost on restart)");
+    return;
   }
+  redis = new Redis(VALKEY_URL, {
+    retryStrategy: (times) => Math.min(times * 200, 5000),
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+  });
+  redis.on("error", (err) => console.error("Valkey error:", err.message));
+  redis.on("connect", () => console.log("Connected to Valkey"));
 }
 
-function saveMetrics(metrics) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(metrics, null, 2));
+async function loadMetrics() {
+  // Return cache if available
+  if (metricsCache) return metricsCache;
+
+  // Try Valkey
+  if (redis) {
+    try {
+      const data = await redis.get(METRICS_KEY);
+      if (data) {
+        metricsCache = JSON.parse(data);
+        return metricsCache;
+      }
+    } catch (err) {
+      console.error("Valkey read error:", err.message);
+    }
+  }
+
+  // Fall back to defaults and seed Valkey
+  metricsCache = getDefaultMetrics();
+  await saveMetrics(metricsCache);
+  return metricsCache;
+}
+
+async function saveMetrics(metrics) {
+  metricsCache = metrics;
+  if (redis) {
+    try {
+      await redis.set(METRICS_KEY, JSON.stringify(metrics));
+    } catch (err) {
+      console.error("Valkey write error:", err.message);
+    }
+  }
 }
 
 function deepMerge(target, source) {
@@ -170,7 +210,7 @@ function createMcpServer() {
     "Get all current metrics from the OSC AI Autonomy Brag Page",
     {},
     async () => {
-      const metrics = loadMetrics();
+      const metrics = await loadMetrics();
       return {
         content: [
           {
@@ -204,7 +244,7 @@ function createMcpServer() {
         .describe("Total PRs in last 90 days"),
     },
     async (args) => {
-      const current = loadMetrics();
+      const current = await loadMetrics();
       const update = {};
       if (args.aiAutonomyPercent !== undefined)
         update.aiAutonomyPercent = args.aiAutonomyPercent;
@@ -216,7 +256,7 @@ function createMcpServer() {
 
       current.headline = { ...current.headline, ...update };
       current.lastUpdated = new Date().toISOString().split("T")[0];
-      saveMetrics(current);
+      await saveMetrics(current);
       return {
         content: [
           {
@@ -241,7 +281,7 @@ function createMcpServer() {
       prs90d: z.number().optional().describe("PRs in last 90 days"),
     },
     async (args) => {
-      const current = loadMetrics();
+      const current = await loadMetrics();
       const team = current.teams[args.team];
       if (!team) {
         return {
@@ -254,7 +294,7 @@ function createMcpServer() {
         team.commitsAllTime = args.commitsAllTime;
       if (args.prs90d !== undefined) team.prs90d = args.prs90d;
       current.lastUpdated = new Date().toISOString().split("T")[0];
-      saveMetrics(current);
+      await saveMetrics(current);
       return {
         content: [
           {
@@ -277,7 +317,7 @@ function createMcpServer() {
       human: z.number().optional().describe("Human commits (90d)"),
     },
     async (args) => {
-      const current = loadMetrics();
+      const current = await loadMetrics();
       const idx = current.repos.findIndex((r) => r.name === args.name);
       if (idx >= 0) {
         if (args.ai !== undefined) current.repos[idx].ai = args.ai;
@@ -292,7 +332,7 @@ function createMcpServer() {
         });
       }
       current.lastUpdated = new Date().toISOString().split("T")[0];
-      saveMetrics(current);
+      await saveMetrics(current);
       const repo = current.repos.find((r) => r.name === args.name);
       return {
         content: [
@@ -316,10 +356,10 @@ function createMcpServer() {
       event: z.string().describe("Description of the milestone"),
     },
     async (args) => {
-      const current = loadMetrics();
+      const current = await loadMetrics();
       current.milestones.push({ date: args.date, event: args.event });
       current.lastUpdated = new Date().toISOString().split("T")[0];
-      saveMetrics(current);
+      await saveMetrics(current);
       return {
         content: [
           {
@@ -346,7 +386,7 @@ function createMcpServer() {
       try {
         const newMetrics = JSON.parse(args.metrics);
         newMetrics.lastUpdated = new Date().toISOString().split("T")[0];
-        saveMetrics(newMetrics);
+        await saveMetrics(newMetrics);
         return {
           content: [
             {
@@ -382,26 +422,33 @@ async function build() {
     prefix: "/",
   });
 
-  // Initialize data
-  if (!fs.existsSync(DATA_FILE)) {
-    saveMetrics(getDefaultMetrics());
+  // Initialize Valkey connection and seed defaults if empty
+  initRedis();
+  if (redis) {
+    try {
+      await redis.connect();
+    } catch (err) {
+      console.error("Valkey connect error:", err.message);
+    }
   }
+  // Pre-load metrics (seeds Valkey with defaults if empty)
+  await loadMetrics();
 
   // ---- REST API ----
 
-  app.get("/api/metrics", async () => loadMetrics());
+  app.get("/api/metrics", async () => await loadMetrics());
 
   app.put("/api/metrics", async (request) => {
-    const current = loadMetrics();
+    const current = await loadMetrics();
     const merged = deepMerge(current, request.body);
     merged.lastUpdated = new Date().toISOString().split("T")[0];
-    saveMetrics(merged);
+    await saveMetrics(merged);
     return { ok: true, lastUpdated: merged.lastUpdated };
   });
 
   app.patch("/api/metrics/:section", async (request) => {
     const { section } = request.params;
-    const current = loadMetrics();
+    const current = await loadMetrics();
     if (!current[section]) {
       return { error: `Unknown section: ${section}` };
     }
@@ -415,7 +462,7 @@ async function build() {
   });
 
   app.post("/api/metrics/milestones", async (request) => {
-    const current = loadMetrics();
+    const current = await loadMetrics();
     current.milestones.push(request.body);
     current.lastUpdated = new Date().toISOString().split("T")[0];
     saveMetrics(current);
