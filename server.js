@@ -95,6 +95,7 @@ function getDefaultMetrics() {
       totalCommits90d: 930,
       totalRepos: 15,
       totalPRs90d: 620,
+      productionDeploys90d: 178,
     },
     teams: {
       aiDevTeam: {
@@ -242,6 +243,10 @@ function createMcpServer() {
         .number()
         .optional()
         .describe("Total PRs in last 90 days"),
+      productionDeploys90d: z
+        .number()
+        .optional()
+        .describe("Total production deploys in last 90 days"),
     },
     async (args) => {
       const current = await loadMetrics();
@@ -253,6 +258,8 @@ function createMcpServer() {
       if (args.totalRepos !== undefined) update.totalRepos = args.totalRepos;
       if (args.totalPRs90d !== undefined)
         update.totalPRs90d = args.totalPRs90d;
+      if (args.productionDeploys90d !== undefined)
+        update.productionDeploys90d = args.productionDeploys90d;
 
       current.headline = { ...current.headline, ...update };
       current.lastUpdated = new Date().toISOString().split("T")[0];
@@ -368,6 +375,51 @@ function createMcpServer() {
           },
         ],
       };
+    }
+  );
+
+  // Tool: set milestones (replace all)
+  mcp.tool(
+    "set-milestones",
+    "Replace all milestones on the brag page timeline with a new array. Use this for dynamically computed milestones.",
+    {
+      milestones: z
+        .string()
+        .describe(
+          'JSON array of milestone objects, each with "date" and "event" fields'
+        ),
+    },
+    async (args) => {
+      try {
+        const milestones = JSON.parse(args.milestones);
+        if (!Array.isArray(milestones)) {
+          return {
+            content: [
+              { type: "text", text: "milestones must be a JSON array" },
+            ],
+            isError: true,
+          };
+        }
+        const current = await loadMetrics();
+        current.milestones = milestones;
+        current.lastUpdated = new Date().toISOString().split("T")[0];
+        await saveMetrics(current);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Milestones replaced: ${milestones.length} milestones set`,
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            { type: "text", text: `Invalid JSON: ${err.message}` },
+          ],
+          isError: true,
+        };
+      }
     }
   );
 

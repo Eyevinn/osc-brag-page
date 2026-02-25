@@ -108,7 +108,7 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 1.5rem;
-      max-width: 900px;
+      max-width: 1100px;
       width: 100%;
       animation: fadeIn 1s ease 0.6s both;
     }
@@ -135,6 +135,7 @@
     .big-stat.secondary .number { color: var(--accent-glow); }
     .big-stat.tertiary .number { color: var(--cyan); }
     .big-stat.quaternary .number { color: var(--orange); }
+    .big-stat.quinary .number { color: var(--pink); }
 
     /* Sections */
     section {
@@ -629,6 +630,7 @@
         <div class="big-stat primary"><div class="number">${h.aiAutonomyPercent}%</div><div class="label">AI-authored commits</div></div>
         <div class="big-stat secondary"><div class="number">${h.totalCommits90d.toLocaleString()}</div><div class="label">Commits (90 days)</div></div>
         <div class="big-stat tertiary"><div class="number">${h.totalPRs90d.toLocaleString()}</div><div class="label">Pull requests</div></div>
+        <div class="big-stat quinary"><div class="number">${(h.productionDeploys90d || 0).toLocaleString()}</div><div class="label">Prod deploys</div></div>
         <div class="big-stat quaternary"><div class="number">${h.totalRepos}</div><div class="label">Repositories</div></div>
       `;
 
