@@ -625,6 +625,11 @@ async function renderOgImage(metrics) {
   const svg = buildOgSvg(metrics);
   const resvg = new Resvg(svg, {
     fitTo: { mode: "width", value: 1200 },
+    font: {
+      fontFiles: [path.join(__dirname, "fonts", "Inter.ttf")],
+      loadSystemFonts: false,
+      defaultFontFamily: "Inter",
+    },
   });
   const pngData = resvg.render();
   ogImageCache = pngData.asPng();
