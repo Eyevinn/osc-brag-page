@@ -466,7 +466,7 @@ function createMcpServer() {
 // OG metadata helpers
 // ---------------------------------------------------------------------------
 
-const BASE_URL = process.env.APP_URL || "https://brag.apps.osaas.io";
+const BASE_URL = process.env.PUBLIC_URL || "https://brag.apps.osaas.io";
 const htmlTemplate = fs.readFileSync(
   path.join(__dirname, "public", "index.html"),
   "utf-8"
