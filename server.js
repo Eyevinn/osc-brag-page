@@ -2,6 +2,7 @@ const Fastify = require("fastify");
 const path = require("path");
 const fs = require("fs");
 const Redis = require("ioredis");
+const { Resvg } = require("@resvg/resvg-js");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const {
   StreamableHTTPServerTransport,
@@ -462,6 +463,176 @@ function createMcpServer() {
 }
 
 // ---------------------------------------------------------------------------
+// OG metadata helpers
+// ---------------------------------------------------------------------------
+
+const BASE_URL = process.env.APP_URL || "https://brag.apps.osaas.io";
+const htmlTemplate = fs.readFileSync(
+  path.join(__dirname, "public", "index.html"),
+  "utf-8"
+);
+
+function buildOgTags(metrics) {
+  const h = metrics.headline;
+  const title = `${h.aiAutonomyPercent}% AI-Authored Code | Eyevinn Open Source Cloud`;
+  const description = `${h.totalCommits90d.toLocaleString()} commits, ${h.totalPRs90d.toLocaleString()} PRs, ${(h.productionDeploys90d || 0).toLocaleString()} production deploys in 90 days — built by autonomous AI agents across ${h.totalRepos} repos.`;
+  const imageUrl = `${BASE_URL}/og-image.png`;
+
+  return [
+    `<meta property="og:title" content="${title}" />`,
+    `<meta property="og:description" content="${description}" />`,
+    `<meta property="og:image" content="${imageUrl}" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:url" content="${BASE_URL}" />`,
+    `<meta property="og:type" content="website" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:title" content="${title}" />`,
+    `<meta name="twitter:description" content="${description}" />`,
+    `<meta name="twitter:image" content="${imageUrl}" />`,
+  ].join("\n  ");
+}
+
+function injectOgTags(html, metrics) {
+  const tags = buildOgTags(metrics);
+  // Also update <title> and <meta name="description"> with live values
+  const h = metrics.headline;
+  const title = `${h.aiAutonomyPercent}% AI-Authored Code | Eyevinn Open Source Cloud`;
+  const description = `${h.totalCommits90d.toLocaleString()} commits, ${h.totalPRs90d.toLocaleString()} PRs, ${(h.productionDeploys90d || 0).toLocaleString()} production deploys in 90 days — built by autonomous AI agents across ${h.totalRepos} repos.`;
+
+  let result = html.replace(
+    /<title>.*?<\/title>/,
+    `<title>${title}</title>`
+  );
+  result = result.replace(
+    /<meta name="description" content=".*?" \/>/,
+    `<meta name="description" content="${description}" />`
+  );
+  // Inject OG tags right after the description meta tag
+  result = result.replace(
+    /(<meta name="description" content="[^"]*" \/>)/,
+    `$1\n  ${tags}`
+  );
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// OG image generation
+// ---------------------------------------------------------------------------
+
+let ogImageCache = null;
+let ogImageCacheTime = 0;
+const OG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function buildOgSvg(metrics) {
+  const h = metrics.headline;
+  const pct = h.aiAutonomyPercent;
+  const commits = h.totalCommits90d.toLocaleString();
+  const prs = h.totalPRs90d.toLocaleString();
+  const deploys = (h.productionDeploys90d || 0).toLocaleString();
+  const repos = h.totalRepos;
+
+  // Progress bar width (percentage of 400px max)
+  const barWidth = Math.round((pct / 100) * 400);
+
+  return `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#6c5ce7"/>
+      <stop offset="100%" style="stop-color:#a29bfe"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00c853"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f0f1a"/>
+      <stop offset="100%" style="stop-color:#0a0a0f"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGrad)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.03">
+    ${Array.from({ length: 24 }, (_, i) => `<line x1="${i * 50}" y1="0" x2="${i * 50}" y2="630" stroke="#fff" stroke-width="1"/>`).join("")}
+    ${Array.from({ length: 13 }, (_, i) => `<line x1="0" y1="${i * 50}" x2="1200" y2="${i * 50}" stroke="#fff" stroke-width="1"/>`).join("")}
+  </g>
+
+  <!-- Top accent line -->
+  <rect x="0" y="0" width="1200" height="4" fill="url(#accent)"/>
+
+  <!-- Title -->
+  <text x="80" y="100" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="28" font-weight="600" fill="#8888a0" letter-spacing="2">BUILT BY AI AGENTS</text>
+
+  <!-- Hero percentage -->
+  <text x="80" y="210" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="120" font-weight="800" fill="#00e676">${pct}%</text>
+  <text x="80" y="260" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="32" font-weight="500" fill="#e8e8f0">AI-Authored Code</text>
+
+  <!-- Progress bar background -->
+  <rect x="80" y="285" width="400" height="8" rx="4" fill="#1a1a28"/>
+  <!-- Progress bar fill -->
+  <rect x="80" y="285" width="${barWidth}" height="8" rx="4" fill="url(#greenGrad)"/>
+
+  <!-- Decorative circle on right -->
+  <circle cx="950" cy="180" r="140" fill="none" stroke="#6c5ce7" stroke-width="3" opacity="0.15"/>
+  <circle cx="950" cy="180" r="100" fill="none" stroke="#6c5ce7" stroke-width="2" opacity="0.1"/>
+
+  <!-- Stats row -->
+  <g transform="translate(80, 370)">
+    <!-- Commits -->
+    <g>
+      <rect x="0" y="0" width="220" height="100" rx="12" fill="#12121a" stroke="#2a2a3a" stroke-width="1"/>
+      <text x="110" y="45" font-family="Inter, sans-serif" font-size="36" font-weight="700" fill="#e8e8f0" text-anchor="middle">${commits}</text>
+      <text x="110" y="75" font-family="Inter, sans-serif" font-size="16" fill="#8888a0" text-anchor="middle">Commits (90d)</text>
+    </g>
+    <!-- PRs -->
+    <g transform="translate(245, 0)">
+      <rect x="0" y="0" width="220" height="100" rx="12" fill="#12121a" stroke="#2a2a3a" stroke-width="1"/>
+      <text x="110" y="45" font-family="Inter, sans-serif" font-size="36" font-weight="700" fill="#e8e8f0" text-anchor="middle">${prs}</text>
+      <text x="110" y="75" font-family="Inter, sans-serif" font-size="16" fill="#8888a0" text-anchor="middle">Pull Requests</text>
+    </g>
+    <!-- Deploys -->
+    <g transform="translate(490, 0)">
+      <rect x="0" y="0" width="220" height="100" rx="12" fill="#12121a" stroke="#2a2a3a" stroke-width="1"/>
+      <text x="110" y="45" font-family="Inter, sans-serif" font-size="36" font-weight="700" fill="#00e676" text-anchor="middle">${deploys}</text>
+      <text x="110" y="75" font-family="Inter, sans-serif" font-size="16" fill="#8888a0" text-anchor="middle">Prod Deploys</text>
+    </g>
+    <!-- Repos -->
+    <g transform="translate(735, 0)">
+      <rect x="0" y="0" width="220" height="100" rx="12" fill="#12121a" stroke="#2a2a3a" stroke-width="1"/>
+      <text x="110" y="45" font-family="Inter, sans-serif" font-size="36" font-weight="700" fill="#6c5ce7" text-anchor="middle">${repos}</text>
+      <text x="110" y="75" font-family="Inter, sans-serif" font-size="16" fill="#8888a0" text-anchor="middle">Repositories</text>
+    </g>
+  </g>
+
+  <!-- Bottom branding -->
+  <text x="80" y="560" font-family="Inter, sans-serif" font-size="22" font-weight="600" fill="#e8e8f0">Eyevinn Open Source Cloud</text>
+  <text x="80" y="590" font-family="Inter, sans-serif" font-size="16" fill="#8888a0">brag.apps.osaas.io</text>
+
+  <!-- Bottom accent line -->
+  <rect x="0" y="626" width="1200" height="4" fill="url(#accent)"/>
+</svg>`;
+}
+
+async function renderOgImage(metrics) {
+  const now = Date.now();
+  if (ogImageCache && now - ogImageCacheTime < OG_CACHE_TTL) {
+    return ogImageCache;
+  }
+
+  const svg = buildOgSvg(metrics);
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: 1200 },
+  });
+  const pngData = resvg.render();
+  ogImageCache = pngData.asPng();
+  ogImageCacheTime = now;
+  return ogImageCache;
+}
+
+// ---------------------------------------------------------------------------
 // Fastify app
 // ---------------------------------------------------------------------------
 
@@ -469,6 +640,24 @@ async function build() {
   const app = Fastify({ logger: true });
 
   await app.register(require("@fastify/cors"), { origin: true });
+
+  // Dynamic index route (injects OG tags) — registered before static plugin
+  app.get("/", async (request, reply) => {
+    const metrics = await loadMetrics();
+    const html = injectOgTags(htmlTemplate, metrics);
+    reply.type("text/html").send(html);
+  });
+
+  // Dynamic OG image
+  app.get("/og-image.png", async (request, reply) => {
+    const metrics = await loadMetrics();
+    const png = await renderOgImage(metrics);
+    reply
+      .type("image/png")
+      .header("Cache-Control", "public, max-age=300")
+      .send(png);
+  });
+
   await app.register(require("@fastify/static"), {
     root: path.join(__dirname, "public"),
     prefix: "/",
