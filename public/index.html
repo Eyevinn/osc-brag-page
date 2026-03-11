@@ -756,12 +756,13 @@
 
       // Hero stats
       const aiCommits = data.teams.aiDevTeam.commits90d + data.teams.aiAgentDirect.commits90d;
+      const epicCount = (data.userValue && data.userValue.closedEpicCount) || 0;
       document.getElementById('hero-stats').innerHTML = `
         <div class="big-stat primary"><div class="number">${h.aiAutonomyPercent}%</div><div class="label">AI-authored commits</div></div>
         <div class="big-stat secondary"><div class="number">${h.totalCommits90d.toLocaleString()}</div><div class="label">Commits (90 days)</div></div>
         <div class="big-stat tertiary"><div class="number">${h.totalPRs90d.toLocaleString()}</div><div class="label">Pull requests</div></div>
         <div class="big-stat quinary"><div class="number">${(h.productionDeploys90d || 0).toLocaleString()}</div><div class="label">Prod deploys</div></div>
-        <div class="big-stat quaternary"><div class="number">${h.totalRepos}</div><div class="label">Repositories</div></div>
+        <div class="big-stat quaternary"><div class="number">${epicCount}</div><div class="label">Epics delivered</div></div>
       `;
 
       // Teams
