@@ -296,6 +296,72 @@
       color: var(--text-dim);
     }
 
+    /* Epics / User Value */
+    .epics-header {
+      display: flex;
+      gap: 2rem;
+      margin-bottom: 2.5rem;
+    }
+    .epic-stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem 2.5rem;
+      text-align: center;
+    }
+    .epic-stat-card.delivered {
+      border-color: var(--green);
+      background: linear-gradient(135deg, rgba(0,230,118,0.04), var(--surface));
+    }
+    .epic-stat-card .epic-number {
+      font-size: 3rem;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+    .epic-stat-card.delivered .epic-number { color: var(--green); }
+    .epic-stat-card:not(.delivered) .epic-number { color: var(--orange); }
+    .epic-stat-card .epic-label {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .epic-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .epic-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: border-color 0.3s;
+    }
+    .epic-item:hover { border-color: var(--green); }
+    .epic-item .epic-title {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+    .epic-item .epic-meta {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .epic-item .epic-date { color: var(--green); font-weight: 600; }
+    .epic-item .epic-issue { color: var(--accent-glow); }
+    @media (max-width: 600px) {
+      .epics-header { flex-direction: column; gap: 1rem; }
+      .epic-item { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    }
+
     /* Automation */
     .auto-grid {
       display: grid;
@@ -640,6 +706,17 @@
     </div>
   </section>
 
+  <!-- User Value: Epics -->
+  <section id="epics-section" style="display:none">
+    <div class="section-label">User Value</div>
+    <h2 class="section-title">Epics Delivered</h2>
+    <p class="section-subtitle">
+      Large features and capabilities shipped to users &mdash; the real measure of what we build.
+    </p>
+    <div class="epics-header" id="epics-header"></div>
+    <div class="epic-list" id="epic-list"></div>
+  </section>
+
   <!-- Timeline -->
   <section>
     <div class="section-label">Timeline</div>
@@ -744,6 +821,31 @@
           </div>
         `;
       }).join('');
+
+      // Epics / User Value
+      const uv = data.userValue;
+      if (uv && (uv.closedEpicCount > 0 || uv.openEpicCount > 0)) {
+        document.getElementById('epics-section').style.display = '';
+        document.getElementById('epics-header').innerHTML = `
+          <div class="epic-stat-card delivered">
+            <div class="epic-number">${uv.closedEpicCount || 0}</div>
+            <div class="epic-label">Delivered</div>
+          </div>
+          <div class="epic-stat-card">
+            <div class="epic-number">${uv.openEpicCount || 0}</div>
+            <div class="epic-label">In Progress</div>
+          </div>
+        `;
+        document.getElementById('epic-list').innerHTML = (uv.closedEpics || []).map(e => `
+          <div class="epic-item">
+            <div class="epic-title">${e.title}</div>
+            <div class="epic-meta">
+              <span class="epic-date">${e.closedAt}</span>
+              <span class="epic-issue">#${e.issue}</span>
+            </div>
+          </div>
+        `).join('');
+      }
 
       // Timeline (auto-link URLs in event text)
       document.getElementById('timeline').innerHTML = (data.milestones || []).map(m => {
