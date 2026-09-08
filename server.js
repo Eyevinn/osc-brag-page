@@ -717,10 +717,63 @@ async function build() {
 
   app.get("/api/health", async () => ({ status: "ok" }));
 
+  // Platform health probe hits /healthz - alias it to the same response shape
+  // as /api/health so the probe doesn't 404/500.
+  app.get("/healthz", async () => ({ status: "ok" }));
+
   // ---- MCP Streamable HTTP endpoint ----
 
-  // Session map: sessionId -> transport
+  // Session map: sessionId -> { transport, lastActivity }
   const sessions = new Map();
+
+  // MCP clients that disconnect abruptly (network drop, crash, timeout) never
+  // send DELETE /mcp, so transport.onclose never fires for them. Without a
+  // reaper and a hard cap, sessions accumulate forever and exhaust the heap.
+  const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+  const SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+  const MAX_SESSIONS = 500;
+
+  async function evictSession(sessionId) {
+    const entry = sessions.get(sessionId);
+    if (!entry) return;
+    sessions.delete(sessionId);
+    try {
+      await entry.transport.close();
+    } catch (err) {
+      console.error(`Error closing MCP session ${sessionId}:`, err.message);
+    }
+  }
+
+  async function evictLeastRecentlyActiveSession() {
+    let oldestSessionId = null;
+    let oldestActivity = Infinity;
+    for (const [id, entry] of sessions) {
+      if (entry.lastActivity < oldestActivity) {
+        oldestActivity = entry.lastActivity;
+        oldestSessionId = id;
+      }
+    }
+    if (oldestSessionId) {
+      await evictSession(oldestSessionId);
+    }
+  }
+
+  const sessionReaperInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [sessionId, entry] of sessions) {
+      if (now - entry.lastActivity > SESSION_IDLE_TIMEOUT_MS) {
+        evictSession(sessionId).catch((err) =>
+          console.error(`Error reaping idle MCP session ${sessionId}:`, err.message),
+        );
+      }
+    }
+  }, SESSION_REAP_INTERVAL_MS);
+  sessionReaperInterval.unref();
+
+  app.addHook("onClose", (instance, done) => {
+    clearInterval(sessionReaperInterval);
+    done();
+  });
 
   // Disable Fastify body parsing on /mcp so we can pass raw body to transport
   app.removeAllContentTypeParsers();
@@ -737,12 +790,18 @@ async function build() {
 
     // Route to existing session
     if (sessionId && sessions.has(sessionId)) {
-      const transport = sessions.get(sessionId);
-      await transport.handleRequest(request.raw, reply.raw, request.body);
+      const entry = sessions.get(sessionId);
+      entry.lastActivity = Date.now();
+      await entry.transport.handleRequest(request.raw, reply.raw, request.body);
       return reply.hijack();
     }
 
-    // New session (initialize request)
+    // New session (initialize request). Enforce a hard cap as a backstop in
+    // case the idle reaper hasn't caught up yet.
+    if (sessions.size >= MAX_SESSIONS) {
+      await evictLeastRecentlyActiveSession();
+    }
+
     const mcp = createMcpServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
@@ -757,7 +816,7 @@ async function build() {
 
     // After handling, the transport now has a session ID
     if (transport.sessionId) {
-      sessions.set(transport.sessionId, transport);
+      sessions.set(transport.sessionId, { transport, lastActivity: Date.now() });
     }
 
     return reply.hijack();
@@ -770,17 +829,16 @@ async function build() {
     if (!sessionId || !sessions.has(sessionId)) {
       return reply.code(400).send({ error: "Invalid or missing session ID" });
     }
-    const transport = sessions.get(sessionId);
-    await transport.handleRequest(request.raw, reply.raw);
+    const entry = sessions.get(sessionId);
+    entry.lastActivity = Date.now();
+    await entry.transport.handleRequest(request.raw, reply.raw);
     return reply.hijack();
   });
 
   app.delete("/mcp", async (request, reply) => {
     const sessionId = request.headers["mcp-session-id"];
     if (sessionId && sessions.has(sessionId)) {
-      const transport = sessions.get(sessionId);
-      await transport.close();
-      sessions.delete(sessionId);
+      await evictSession(sessionId);
     }
     reply.raw.writeHead(200);
     reply.raw.end();
